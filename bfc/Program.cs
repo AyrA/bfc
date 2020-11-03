@@ -173,11 +173,16 @@ namespace bfc
             try
             {
                 var Result = Engine.GenerateCode(Tokens);
+                if (Result == null)
+                {
+                    throw new NullReferenceException($"{EngineDescription.Name} did not output any code (returned data is null)");
+                }
                 File.WriteAllText(UserArgs.OutputFile, new string(Result.ToArray()));
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Console.Error.WriteLine("Unable to convert BF code.");
+                Console.Error.WriteLine("Type: {0}", ex.GetType().Name);
                 Console.Error.WriteLine("Message: {0}", ex.Message);
                 return;
             }
