@@ -3,7 +3,7 @@
 
 This is a [Brainfuck](https://en.wikipedia.org/wiki/Brainfuck) compiler that can target multiple languages and is easily extendable.
 
-*The Word Brainfuck will be abbreviated as BF further down*
+*The word Brainfuck will be abbreviated as BF further down*
 
 ## About BF
 
@@ -22,7 +22,7 @@ BF consists of 8 instructions that directly map to common code constructs in man
 | `[` | `while(mem[ptr]!=0){` |
 | `]` | `}` |
 | `.` | `Console.Write((char)mem[ptr]);` |
-| `,` | `mem[ptr]=(int)Console.ReadKey().KeyChar;` |
+| `,` | `mem[ptr]=(byte)Console.ReadKey().KeyChar;` |
 
 ### Specs
 
