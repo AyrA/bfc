@@ -24,25 +24,35 @@ BF consists of 8 instructions that directly map to common code constructs in man
 | `.` | `Console.Write((char)mem[ptr]);` |
 | `,` | `mem[ptr]=(int)Console.ReadKey().KeyChar;` |
 
-Before the BF code runs, `var mem=new byte[30000];int ptr=0;` is executed.
-After the BF code, `return (int)mem[ptr];` is executed.
+### Specs
 
-Any unsupported character encountered in a BF file is discarded.
+- BF expects the memory to be set to zero.
+- Before the BF code runs, `var mem=new byte[30000];int ptr=0;` is executed.
+- After the BF code, `return (int)mem[ptr];` is executed (not part of BF, but allows error reporting by a BF program).
+- Any unsupported character encountered in a BF file is considered a comment and is discarded.
+- overflow behavior of memory cells is undefined.
+- `ptr` does not wrap around and will simply go out of bounds.
 
 ### Defaults
 
-The original BF compiler was written in C. It used a `char` array of 30'000 elements as memory. All built-in engines will default to that but some allow customization via arguments. Your custom engines should follow this principle too.
+The original BF compiler was written in C.
+It used a `char` array of 30'000 elements as memory.
+All built-in engines will default to that but some allow customization via arguments.
+Your custom engines should follow this principle too.
 
-The BF compiler made no special distinction between signed and unsigned.
+The original BF compiler made no special distinction between signed and unsigned.
 Signed overflow is undefined behavior in C, so you should default to an unsigned 8-bit data type unless you need something else.
 Do not use data types that are too large.
-The only way to make a number larger in BF is to add 1 to it. A signed 32 bit memory cell takes over 2 billion increments to fill up.
+The only way to make a number larger in BF is to add 1 to it.
+A signed 32 bit memory cell takes over 2 billion increments to fill up.
 
 ## Usage
 
 This is a command line utility that has 3 different ways of using it:
 
 ### Compiling BF code
+
+An example file is provided in the bf directory.
 
     bfc [/y] [/o] /e engine [/a arg [...]] <infile> [outfile]
 
@@ -94,18 +104,121 @@ All built-in engines support this and will appropriately emit instructions.
 For example the C99 engine will turn `+++++` into `mem[ptr]+=5;` instead of 5 times `++mem[ptr];`
 
 If you struggle with this, or you compile to a target that doesn't supports this,
-you can use the `Token.GetRepeated()` method to get individual tokens from a combined one. This means `Tokens=Tokens.SelectMany(m => m.GetRepeated())` will essentially undo most of the work the tokenizer did and will leave you with exactly as many tokens as there are individual BF instructions.
+you can use the `Token.GetRepeated()` method to get individual tokens from a combined one.
+This means `Tokens=Tokens.SelectMany(m => m.GetRepeated())` will essentially undo most of the work the tokenizer did
+and will leave you with exactly as many tokens as there are individual BF instructions.
+
+## Built-in Engines
+
+This project comes with three built-in engines of various interest.
+
+### C#
+
+Creates C# code for a console application.
+The code does not depend on any particular framework version and should compile with every framework.
+The managed nature of the language makes this safe against out of bounds reads/writes,
+but it's not quite as fast as C code.
+
+The code is properly indented.
+
+#### Demonstrates
+
+- Generating code for a simple to use language with strong control flow structures
+- Indent code
+- Different instructions for token runs of 1 vs runs of 2 or more
+- Detect unbalanced brackets
+- Custom arguments
+
+### C99
+
+This engine creates standard C99 code.
+It should compile with all warnings turned on and the `-pedantic` setting too.
+Provided your BF code does not depends on memory cell overflow, it should be portable.
+
+This generator will not protect against out of bounds reads/writes.
+
+The code is properly indented.
+
+#### Demonstrates
+
+- Generating code for a ubiquitous language with strong control flow structures
+- Indent code
+- Different instructions for token runs of 1 vs runs of 2 or more
+- Detect unbalanced brackets
+- Custom arguments
+
+### DOS
+
+This engine creates Intel 386 compatible assembly for a single page DOS executable (.com file).
+The assembly syntax is [Flat Assembler (FASM)](https://flatassembler.net/) compatible.
+FASM can assemble the output of this compiler into an executable for DOS.
+You can assemble it directly in your main OS, or you can assemble it inside of DOS itself.
+A FASM port for DOS is available, but be aware that it needs a [DPMI host](https://en.wikipedia.org/wiki/DOS_Protected_Mode_Interface).
+
+The assembled executable will not run on 64 bit Windows.
+To run your code reliably, you can use an easy to use emulator like [DosBOX](https://www.dosbox.com/).
+DosBOX emulates an old computer.
+If you want to run a long-running BF application,
+you can hold down `ALT`+`F12` to run it at unlocked speed.
+
+A single page application has a few weird properties:
+
+- Runs in [real mode](https://en.wikipedia.org/wiki/Real_mode).
+- Code, working memory, and stack share the same memory space.
+- Nothing is protected against accidental or malicious writes.
+- Limited to 64k of memory.
+
+These properties cause a few potentially problematic things to happen:
+
+- As the code size grows, free memory shrinks.
+- Pushing too much onto the stack will overwrite other objects (and eventually code) in memory.
+
+BF does not use a stack, so this problem is non existent for a BF application.
+The stack is still initialized by DOS to point to the very end of the memory page.
+The executable in memory has this layout (numbers in hexadecimal):
+
+| Type   | From | Length | To   | Description              |
+|--------|------|--------|------|--------------------------|
+| PSP    | 0000 | 0100   | 00FF | DOS supplied information |
+| Code   | 0100 | *      | *    | BF code                  |
+| Memory | *    | *      | FFFF | Usable memory            |
+| Stack  | FFFF | *      | 0    | Stack (not used)         |
+
+Note that the BF code will be prepended and appended with a few other assembly instructions.
+Before BF starts, a few assembly instructions will zero the available memory.
+After BF ends, a DOS exit call is run to properly return control back to DOS.
+After the exit call are two subroutines for reading and writing characters.
+
+#### Demonstrates
+
+- Generating very low level code with weak control flow structures (only jumps and labels)
+- Optimize unnecessary jumps away
+- Different instructions for token runs of 1 vs runs of 2 or more
+- Detect unbalanced brackets
+- Engine without arguments
+
+## External Engines
+
+This repository comes with a secondary project that creates "fake" assembly code.
+This is used to demonstrate how to create external engines and can be used as base code for such.
 
 ## Extending
 
 This application supports loading custom engines.
-One such engine is provided as an example. It outputs code that looks like assembly but is not actually. You can use this as a base for your own engines.
+One such engine is provided as an example.
+It outputs code that looks like assembly but is not actually.
+You can use this as a base for your own engines.
 
 To write your own engine, all you have to do is provide an implementation of the `ICodeGenerator` interface.
 
-Your implementation must provide an empty constructor, so it can be instantiated to call the methods to obtain name, description, etc.
+Your implementation must provide an empty constructor,
+so it can be instantiated to call the methods to obtain name, description, etc.
 
-BFC comes with a `bfc.dll` and a `bfc.exe` file. You can reference the DLL to get access to the required interface. As an alternative, you can download this repository and then add a project reference instead.
+BFC comes with a `bfc.dll` and a `bfc.exe` file.
+You can reference the DLL to get access to the required interface.
+As an alternative, you can download this repository and then add a project reference instead.
+
+A single DLL file can contain multiple engines.
 
 ### Limitations
 
@@ -135,3 +248,23 @@ BF code can technically be of any length, and it has to if you want it to be tur
 Note that code is still occasionally converted to strings to make the program more understandable but it strictly speaking is not necessary. Regular C# strings are considered an implementation of `IEnumerable<char>` which means you don't have to call `.ToCharArray()` when returning a string from your `GenerateCode` method.
 
 **CAUTION!** A `char` in C# is UTF-16 and not a single byte. Do not blindly convert between characters and bytes unless you know that the character will fit a byte.
+
+## Exercises for the Reader
+
+Optimize `[+]` into `!` too.
+
+Discard starting loops in BF.
+If a BF program starts with a loop it will never run the code inside because memory is inizialized to zero.
+These loops are sometimes used to add a header comment,
+because they essentially make anything inside of them skipped over.
+
+Change the C99 generator to use actual single character input (`getchar()` only fires once an entire line has been entered)
+but make sure it still stays portable, at least between Linux and Windows.
+
+Generator for JS.
+
+Generator that outputs indented BF (essentially a code formatter).
+
+Actual BF interpreter. Bonus points if it has a live code and memory viewer.
+
+Generator for another esotheric language that is not a trivial substitution of BF.
