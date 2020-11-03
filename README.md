@@ -54,14 +54,17 @@ This is a command line utility that has 3 different ways of using it:
 
 An example file is provided in the bf directory.
 
-    bfc [/y] [/o] /e engine [/a arg [...]] <infile> [outfile]
+    bfc [/y] [/o] /e engine [/a arg [/a ...]] <infile> [outfile]
 
 - **/y**: Suppresses prompts to overwrite the destination
 - **/o**: Optimizes the code (see "Optimizer"  below)
 - **/e engine**: Selects the engine used to compile the code (see "List Engines" below)
-- **/a arg**: Supplies an argument to the engine.
+- **/a arg**: Supplies an argument to the engine (repeatable for each engine argument).
 - **infile**: File containing BF code
 - **outfile**: File where the output is written to. If missing, replaces the file extension of `infile` with the one supplied by the engine.
+
+The `outfile` argument must be anywhere after the `infile` argument.
+Apart from this, the order of arguments is irrelevant.
 
 ### List Engines
 
@@ -91,11 +94,16 @@ The parser in BFC operates as follows:
 ## Optimizer
 
 This compiler contains an optimizer that is activated using the `/o` switch.
-This switch will introduce new BF instructions that your custom code generator has to deal with. Currently there's only one optimization that's performed:
+This switch will introduce new BF instructions that your custom code generator has to deal with.
+Currently there's only one optimization that's performed:
 
 | Original | Replacement | Optimized | Description |
 |--|--|--|--|
 | `[-]` | `!` | `mem[ptr]=0;` | Set current memory cell to zero |
+
+If your engine can't handle optimized instructions, it should either replace them with the original BF instructions,
+or throw an exception, informing the user that the `/o` switch is not supported by your engine.
+This should then also be part of the engine help.
 
 ## Tokenizer
 
@@ -107,6 +115,7 @@ If you struggle with this, or you compile to a target that doesn't supports this
 you can use the `Token.GetRepeated()` method to get individual tokens from a combined one.
 This means `Tokens=Tokens.SelectMany(m => m.GetRepeated())` will essentially undo most of the work the tokenizer did
 and will leave you with exactly as many tokens as there are individual BF instructions.
+This will not undo work done by the optimizer.
 
 ## Built-in Engines
 
@@ -172,6 +181,7 @@ These properties cause a few potentially problematic things to happen:
 
 - As the code size grows, free memory shrinks.
 - Pushing too much onto the stack will overwrite other objects (and eventually code) in memory.
+- A (malicious) BF program can run any machine instruction it wants by overwriting itself or jumping into memory.
 
 BF does not use a stack, so this problem is non existent for a BF application.
 The stack is still initialized by DOS to point to the very end of the memory page.
@@ -188,6 +198,62 @@ Note that the BF code will be prepended and appended with a few other assembly i
 Before BF starts, a few assembly instructions will zero the available memory.
 After BF ends, a DOS exit call is run to properly return control back to DOS.
 After the exit call are two subroutines for reading and writing characters.
+
+If you want to screw around with the PSP, [you can find the layout here](https://en.wikipedia.org/wiki/Program_Segment_Prefix).
+Remember that you have to leave the BF program memory for this to work.
+Since the memory is initialized to zero, you can essentially just go to the right until it's not zero anymore.
+The PSP starts with the bytes `0xCD 0x20` but you can just search for the first non-zero cell.
+
+    Moves the memory cursor to the right until `0xCD` is found
+    +++++++++++++++++++++++++++++++++++++++++++++++++++
+    [
+    ---------------------------------------------------
+    >
+    +++++++++++++++++++++++++++++++++++++++++++++++++++
+    ]
+    Memory pointer now at start of PSP
+    BF memory still zeroed
+
+The example code above is not optimized for size in any way.
+
+How it works:
+
+    +-----+
+    |Start|
+    +-----+
+       |
+       |
+       v
+    +----------------------+
+    |Add 51 to current cell+<---------+
+    +--+-------------------+          |
+       |                              |
+       |                              |
+       v                              |
+    +--+---------+    +----------+    |
+    |Is cell zero+-Y->+At PSP now|    |
+    +--+---------+    +----------+    |
+       |                              |
+       N                              |
+       v                              |
+    +--+--------------------------+   |
+    |Subtract 51 from current cell|   |
+    +--+--------------------------+   |
+       |                              |
+       |                              |
+       v                              |
+    +--+------------+                 |
+    |Go to next cell+-----------------+
+    +---------------+
+
+
+It's easier if you write a code generator that copies the required values into BF memory.
+The BF pointer doesn't has to start at zero in the memory.
+Offsetting the pointer and filling the memory before the new start location will not break existing BF programs,
+but programs that are aware of the content before cell zero can access it.
+
+Note that DOS will not properly check for CTRL+C.
+To do so, subtract 3 from the input and check if it's zero.
 
 #### Demonstrates
 
